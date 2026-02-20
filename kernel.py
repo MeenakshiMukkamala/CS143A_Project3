@@ -2,10 +2,9 @@
 # Group id: dugarr@uci.edu, meenakm@uci.edu, pjhunjh1@uci.edu
 # Members: Rishita Dugar, Meenakshi Mukkamala, Pragya Jhunjhunwala
 
-
-
 from collections import deque
 from dataclasses import dataclass
+import threading
 
 # PID is just an integer, but it is used to make it clear when a integer is expected to be a valid PID.
 PID = int
@@ -69,6 +68,10 @@ class Kernel:
         self.rr_ready_queue = deque()
         self.active_queue = FOREGROUND
         self.active_queue_num_ticks = 0
+
+        self.mutexes = {}
+        self.semaphores = {}
+        self.lock = threading.Lock()
 
     # This method is triggered every time a new process has arrived.
     # new_process is this process's PID.
@@ -198,32 +201,90 @@ class Kernel:
     # This method is triggered when the currently running process requests to initialize a new semaphore.
     # DO NOT rename or delete this method. DO NOT change its arguments.
     def syscall_init_semaphore(self, semaphore_id: int, initial_value: int):
-        return
+        if initial_value < 0:
+            return -1
+
+        with self.lock: 
+            if semaphore_id in self.semaphores:
+                return -1
+            self.semaphores[semaphore_id] = {'value': initial_value, 'waiting_queue': []}
+
+        return 
     
+    def _pick_from_waiting_queue(self, waiting_queue: list):
+        if self.scheduling_algorithm == PRIORITY:
+            return pop_min_priority(waiting_queue)
+        else:
+            return pop_min_pid(waiting_queue)
+
     # This method is triggered when the currently running process calls p() on an existing semaphore.
     # DO NOT rename or delete this method. DO NOT change its arguments.
     def syscall_semaphore_p(self, semaphore_id: int) -> PID:
+        semaphore = self.semaphores[semaphore_id]
+        semaphore['value'] -= 1
+
+        if semaphore['value'] < 0:
+            blocked_pcb = self.running
+            self.running = self.idle_pcb
+            semaphore['waiting_queue'].append(blocked_pcb)
+            self.choose_next_process()
+
         return self.running.pid
 
     # This method is triggered when the currently running process calls v() on an existing semaphore.
     # DO NOT rename or delete this method. DO NOT change its arguments.
     def syscall_semaphore_v(self, semaphore_id: int) -> PID:
+        semaphore = self.semaphores[semaphore_id]
+        semaphore['value'] += 1
+
+        if semaphore['value'] <= 0 and len(semaphore['waiting_queue']) > 0:
+            released_pcb = self._pick_from_waiting_queue(semaphore['waiting_queue'])
+            self.ready_queue.append(released_pcb)
+
+            if self.scheduling_algorithm != FCFS:
+                self.choose_next_process()        
+        
         return self.running.pid 
 
     # This method is triggered when the currently running process requests to initialize a new mutex.
     # DO NOT rename or delete this method. DO NOT change its arguments.
     def syscall_init_mutex(self, mutex_id: int):
-        return
+        with self.lock:
+            if mutex_id in self.mutexes:
+                return -1
+            self.mutexes[mutex_id] = {'held_by': None, 'waiting_queue': []}
 
     # This method is triggered when the currently running process calls lock() on an existing mutex.
     # DO NOT rename or delete this method. DO NOT change its arguments.
     def syscall_mutex_lock(self, mutex_id: int) -> PID:
+        mutex = self.mutexes[mutex_id]
+
+        if mutex['held_by'] is None:
+            mutex['held_by'] = self.running.pid
+
+        else:
+            blocked_pcb = self.running
+            self.running = self.idle_pcb
+            mutex['waiting_queue'].append(blocked_pcb)
+            self.choose_next_process()
+        
         return self.running.pid 
 
 
     # This method is triggered when the currently running process calls unlock() on an existing mutex.
     # DO NOT rename or delete this method. DO NOT change its arguments.
     def syscall_mutex_unlock(self, mutex_id: int) -> PID:
+        mutex = self.mutexes[mutex_id]
+
+        if len(mutex['waiting_queue']) > 0:
+            released_pcb = self._pick_from_waiting_queue(mutex['waiting_queue'])
+            mutex['held_by'] = released_pcb.pid
+            self.ready_queue.append(released_pcb)
+            self.choose_next_process()  
+        
+        else:
+            mutex['held_by'] = None
+    
         return self.running.pid 
 
 
