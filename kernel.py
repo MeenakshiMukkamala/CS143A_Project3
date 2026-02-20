@@ -1,6 +1,6 @@
 ### Fill in the following information before submitting
-# Group id: 
-# Members: 
+# Group id: dugarr@uci.edu, meenakm@uci.edu, pjhunjh1@uci.edu
+# Members: Rishita Dugar, Meenakshi Mukkamala, Pragya Jhunjhunwala
 
 
 
