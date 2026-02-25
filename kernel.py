@@ -87,6 +87,7 @@ class Kernel:
     # This method is triggered every time the current process performs an exit syscall.
     # DO NOT rename or delete this method. DO NOT change its arguments.
     def syscall_exit(self) -> PID:
+        self.running.num_quantum_ticks = 0 
         self.running = self.idle_pcb
         self.choose_next_process()
         return self.running.pid
@@ -225,6 +226,7 @@ class Kernel:
 
         if semaphore['value'] < 0:
             blocked_pcb = self.running
+            blocked_pcb.num_quantum_ticks = 0 
             self.running = self.idle_pcb
             semaphore['waiting_queue'].append(blocked_pcb)
             self.choose_next_process()
@@ -240,10 +242,8 @@ class Kernel:
         if semaphore['value'] <= 0 and len(semaphore['waiting_queue']) > 0:
             released_pcb = self._pick_from_waiting_queue(semaphore['waiting_queue'])
             self.ready_queue.append(released_pcb)
-
-            if self.scheduling_algorithm != FCFS:
-                self.choose_next_process()        
-        
+            self.choose_next_process()        
+    
         return self.running.pid 
 
     # This method is triggered when the currently running process requests to initialize a new mutex.
@@ -264,6 +264,7 @@ class Kernel:
 
         else:
             blocked_pcb = self.running
+            blocked_pcb.num_quantum_ticks = 0 
             self.running = self.idle_pcb
             mutex['waiting_queue'].append(blocked_pcb)
             self.choose_next_process()
